@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>recs — Interactive Recommender Engine Demo</title>
+  <meta name="description" content="Item-item collaborative filtering, matrix factorisation and BPR on an embedded rating matrix — see top-N recommendations and why rating prediction does not rank.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232563eb'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='monospace'>★</text></svg>">
+  <style>
+    :root {
+      --bg: #f6f7f9; --surface: #ffffff; --surface-2: #eef0f4; --border: #dde1e8;
+      --text: #16181d; --muted: #5d6573; --accent: #2563eb; --accent-ink: #ffffff;
+      --good: #15803d; --bad: #b91c1c; --radius: 12px;
+      --shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 4px 16px rgb(16 24 40 / 0.05);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0e1116; --surface: #161a21; --surface-2: #1d222b; --border: #2a303b;
+        --text: #e8eaee; --muted: #9aa3b2; --accent: #60a5fa; --accent-ink: #0b1220;
+        --good: #4ade80; --bad: #f87171; --shadow: none; color-scheme: dark;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body { font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent); }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+    header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    header.top h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+    header.top p { margin: 2px 0 0; color: var(--muted); }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); min-width: 0; margin-bottom: 16px; }
+    .card h2 { font-size: 15px; margin: 0 0 12px; }
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    input, select, button { font: inherit; color: inherit; }
+    input, select { width: 100%; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface-2); outline: none; min-width: 0; }
+    input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    button { cursor: pointer; border: 1px solid var(--border); background: var(--surface-2); padding: 9px 14px; border-radius: 9px; font-weight: 600; }
+    button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+    .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+    .row > * { flex: 1 1 160px; }
+    .row > button { flex: 0 0 auto; }
+    .muted { color: var(--muted); }
+    .mono { font-family: var(--mono); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    td.num, th.num { text-align: right; font-family: var(--mono); }
+    .table-wrap { overflow-x: auto; max-height: 340px; overflow-y: auto; }
+    footer { margin-top: 32px; color: var(--muted); font-size: 13px; text-align: center; }
+    .grid2 { display: grid; gap: 16px; grid-template-columns: 1fr; }
+    @media (min-width: 720px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+    .list { list-style: none; margin: 0; padding: 0; }
+    .list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .list li:last-child { border-bottom: 0; }
+    .rank { font-family: var(--mono); font-weight: 700; color: var(--muted); width: 1.5em; }
+    .title { flex: 1; min-width: 0; }
+    .title .t { font-weight: 600; }
+    .title .g { font-size: 12px; color: var(--muted); }
+    .score { font-family: var(--mono); font-weight: 700; }
+    .bar { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; margin-top: 4px; }
+    .bar > i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+    .seen { opacity: 0.55; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+    .note { background: var(--surface-2); border-radius: 8px; padding: 12px; font-size: 14px; margin-top: 12px; }
+    .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+    .stat { background: var(--surface-2); border-radius: 8px; padding: 8px 12px; min-width: 100px; flex: 1; }
+    .stat .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .stat .v { font-family: var(--mono); font-size: 18px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div>
+        <h1>recs</h1>
+        <p>Item-item CF, matrix factorisation and BPR on a small embedded catalogue — top-N pages with scores, and the finding that rating prediction does not rank.</p>
+      </div>
+      <a href="https://github.com/umer-78/recommender-engine">Source on GitHub</a>
+    </header>
+
+    <section class="card" aria-labelledby="rec-h">
+      <h2 id="rec-h">Recommend for a user</h2>
+      <p class="muted" style="margin-top:0">20 users × 25 popular titles sampled from the package's 17k interactions. Seen items are excluded from every page — the best predictor of what someone watched is what someone watched.</p>
+      <div class="row" style="margin-bottom:12px">
+        <div>
+          <label for="user">User</label>
+          <select id="user"></select>
+        </div>
+        <div>
+          <label for="model">Model</label>
+          <select id="model">
+            <option value="item-knn" selected>item-knn</option>
+            <option value="bpr">bpr</option>
+            <option value="mf">matrix factorisation</option>
+            <option value="popularity">popularity</option>
+            <option value="random">random</option>
+          </select>
+        </div>
+        <div>
+          <label for="k">Top-K <span class="mono" id="kVal">10</span></label>
+          <input id="k" type="range" min="3" max="15" step="1" value="10">
+        </div>
+        <button class="primary" id="runBtn">Recommend</button>
+      </div>
+      <div class="grid2">
+        <div>
+          <h2 style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em">History (seen)</h2>
+          <ul class="list" id="historyList"></ul>
+        </div>
+        <div>
+          <h2 style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em">Recommendations <span class="pill" id="modelPill">item-knn</span></h2>
+          <ul class="list" id="recList"></ul>
+        </div>
+      </div>
+      <div class="stats" id="stats"></div>
+      <div class="note" id="explainNote"></div>
+    </section>
+
+    <section class="card" aria-labelledby="mat-h">
+      <h2 id="mat-h">The rating matrix</h2>
+      <p class="muted" style="margin-top:0">Cells are ratings 1–5; blank means unseen. This is a dense sample so the demo runs instantly — the real matrix is 11.5% full across 500 users and 300 items.</p>
+      <div class="table-wrap">
+        <table id="matrixTable">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="why-h">
+      <h2 id="why-h">Rating prediction is not ranking</h2>
+      <p>On the full dataset, <code class="mono">MatrixFactorization</code> minimises squared error on observed ratings — the classic Netflix-prize objective — and scores well at exactly that. Ranked by its predicted rating it collapses: the highest predictions go to items a handful of generous users rated 5, which almost nobody else wants.</p>
+      <p><code class="mono">BPR</code> is the same architecture with the ratings thrown away. For each thing a user interacted with, sample something they did not, and push the first above the second. Same factors, same regularisation, same data: <strong>NDCG@10 0.0138 → 0.1878</strong>, a factor of thirteen.</p>
+      <p class="muted" style="margin-bottom:0">Also fixed in the package: a temporal split per user (never random), seen items excluded from every page, and coverage reported next to accuracy — popularity reaches 10.7% of the catalogue; BPR reaches 97%.</p>
+    </section>
+
+    <footer>32 tests · Python 3.10–3.12 · no runtime dependencies · Built by <a href="https://github.com/umer-78">Umer Hashmi</a></footer>
+  </div>
+
+  <script>
+    // === Embedded sample from data/ ===
+    const ITEMS = {
+      "122": { t: "Spare Chat", g: "comedy" }, "74": { t: "Broken Witness", g: "thriller" },
+      "209": { t: "Whole Harvest", g: "documentary" }, "42": { t: "Second State", g: "sci-fi" },
+      "164": { t: "Salt Term", g: "drama" }, "266": { t: "Bell Garden", g: "animation" },
+      "29": { t: "Orbital Harvest", g: "sci-fi" }, "89": { t: "Blind Audit", g: "thriller" },
+      "45": { t: "Orbital Horizon", g: "sci-fi" }, "17": { t: "Kepler Field", g: "sci-fi" },
+      "216": { t: "Raw Commute", g: "documentary" }, "189": { t: "Long Ground", g: "drama" },
+      "178": { t: "Near Country", g: "drama" }, "249": { t: "Hard Harvest", g: "documentary" },
+      "161": { t: "Salt Light", g: "drama" }, "267": { t: "Honey Kite", g: "animation" },
+      "55": { t: "Safe Courier", g: "thriller" }, "165": { t: "Long Field", g: "drama" },
+      "87": { t: "Dead Ledger", g: "thriller" }, "48": { t: "Deep Freight", g: "sci-fi" },
+      "277": { t: "Honey Lantern", g: "animation" }, "5": { t: "Second Freight", g: "sci-fi" },
+      "162": { t: "Still Tide", g: "drama" }, "176": { t: "Still Ground", g: "drama" },
+      "280": { t: "Cloud Line", g: "animation" },
+    };
+    const RATINGS = {
+      "10": {"42":3.4,"74":2.1,"17":4.7,"5":4.4,"45":3.8,"29":3.5,"122":2.9,"48":3.1,"266":2.9,"280":3.2,"161":2.6,"164":2.0,"209":3.2,"249":1.9},
+      "100": {"267":3.8,"277":3.7,"266":3.2,"74":2.3,"42":3.1,"280":4.4,"122":2.1},
+      "101": {"209":3.9,"164":2.5,"87":2.5,"216":2.8,"249":3.1,"48":2.1,"29":2.8,"122":2.9},
+      "104": {"122":5.0,"74":4.2,"42":5.0,"89":5.0,"55":5.0,"45":4.8,"280":4.0,"87":4.6,"29":4.6},
+      "105": {"45":5.0,"5":5.0,"17":5.0,"48":5.0,"42":5.0,"29":4.3,"74":3.1,"122":4.4,"164":3.8,"209":5.0,"178":4.3,"89":4.5},
+      "106": {"162":3.4,"29":5.0,"42":5.0,"17":5.0,"89":4.2,"45":5.0,"176":3.2,"164":4.4,"178":3.4,"48":4.9,"209":4.2,"5":5.0,"74":4.1,"122":5.0},
+      "107": {"178":5.0,"74":5.0,"164":4.9,"161":4.9,"122":3.5,"267":4.1,"42":3.6,"89":5.0,"189":4.3,"209":3.4,"55":5.0,"266":3.9,"87":4.9},
+      "109": {"122":2.2,"17":2.9,"5":3.7,"74":2.4,"42":2.8,"29":3.1,"164":2.4,"162":2.4,"45":3.5,"48":2.8},
+      "110": {"209":4.5,"176":5.0,"42":3.7,"249":4.9,"122":2.1,"216":3.8,"55":3.9,"29":3.7,"5":3.0,"164":3.9,"74":3.4},
+      "111": {"89":5.0,"42":4.2,"74":5.0,"45":5.0,"5":5.0,"48":5.0,"122":3.4,"29":4.4,"87":4.0,"55":4.0,"209":4.7,"189":3.8},
+      "112": {"45":3.8,"17":3.6,"42":4.0,"74":2.8,"189":2.5,"29":5.0,"266":2.6,"48":3.8,"161":2.5,"5":3.9},
+      "113": {"122":3.9,"74":5.0,"89":3.8,"55":3.5,"87":3.7,"17":2.1,"266":3.1,"209":3.5,"48":3.7,"280":3.3,"29":3.3,"164":2.6},
+      "114": {"74":4.1,"87":4.2,"122":3.6,"89":4.9,"55":5.0,"29":3.2,"280":4.6,"249":4.1,"267":3.0,"266":3.3},
+      "115": {"165":3.8,"42":3.2,"189":3.4,"29":4.4,"176":4.3,"89":3.3,"74":4.0,"249":3.9,"5":4.0},
+      "118": {"122":3.1,"161":3.4,"216":5.0,"45":4.1,"42":3.7,"74":4.0,"209":4.8,"249":3.5,"29":3.8,"164":4.1,"89":2.5,"17":4.0},
+      "12": {"17":3.8,"42":2.8,"48":2.7,"122":2.0,"209":2.9,"45":1.5,"29":3.5,"74":2.5,"5":4.1,"178":2.3,"176":1.3},
+      "120": {"267":5.0,"74":4.9,"277":4.3,"216":3.4,"266":4.7,"55":4.5,"189":3.0,"89":4.1,"249":4.3,"209":2.9},
+      "122": {"249":4.0,"209":3.5,"74":4.0,"48":3.0,"189":3.7,"165":4.1,"216":4.5,"277":3.3,"266":2.3,"87":3.3},
+      "123": {"209":3.0,"216":3.9,"249":3.2,"87":3.0,"55":2.0,"122":3.1,"17":2.4,"165":3.1},
+      "124": {"277":4.5,"122":3.5,"165":2.5,"266":4.6,"29":3.4,"209":3.5,"267":3.9,"216":3.4},
+    };
+    const ITEM_IDS = Object.keys(ITEMS);
+    const USER_IDS = Object.keys(RATINGS);
+
+    // === Models (ports src/recs/models.py) ===
+    function mulberry32(a) {
+      return function () {
+        let t = (a += 0x6d2b79f5);
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    function gauss(rng) {
+      let u = 0, v = 0;
+      while (u === 0) u = rng();
+      while (v === 0) v = rng();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    }
+
+    function unseen(user, ranked, k) {
+      const seen = new Set(Object.keys(RATINGS[user] || {}));
+      const out = [];
+      for (const [item, score] of ranked) {
+        if (seen.has(item)) continue;
+        out.push([item, score]);
+        if (out.length === k) break;
+      }
+      return out;
+    }
+
+    // by_item / by_user
+    const byItem = {}, byUser = {};
+    for (const u of USER_IDS) {
+      byUser[u] = RATINGS[u];
+      for (const [i, r] of Object.entries(RATINGS[u])) {
+        (byItem[i] = byItem[i] || {})[u] = r;
+      }
+    }
+
+    const popularity = Object.entries(byItem)
+      .map(([id, users]) => [id, Object.keys(users).length])
+      .sort((a, b) => b[1] - a[1] || Number(a[0]) - Number(b[0]));
+
+    // Item-KNN
+    const itemKNN = (() => {
+      const norms = {};
+      for (const [item, users] of Object.entries(byItem)) {
+        norms[item] = Math.sqrt(Object.values(users).reduce((s, v) => s + v * v, 0));
+      }
+      const dot = {}, shared = {};
+      for (const items of Object.values(byUser)) {
+        const entries = Object.entries(items).sort((a, b) => Number(a[0]) - Number(b[0]));
+        for (let i = 0; i < entries.length; i++) {
+          for (let j = i + 1; j < entries.length; j++) {
+            const a = entries[i][0], b = entries[j][0];
+            const key = a < b ? a + "|" + b : b + "|" + a;
+            dot[key] = (dot[key] || 0) + entries[i][1] * entries[j][1];
+            shared[key] = (shared[key] || 0) + 1;
+          }
+        }
+      }
+      const sim = {};
+      for (const [key, product] of Object.entries(dot)) {
+        const [a, b] = key.split("|");
+        const denom = norms[a] * norms[b];
+        if (!denom) continue;
+        const count = shared[key];
+        const s = (product / denom) * (count / (count + 20));
+        (sim[a] = sim[a] || []).push([b, s]);
+        (sim[b] = sim[b] || []).push([a, s]);
+      }
+      for (const k of Object.keys(sim)) sim[k].sort((x, y) => y[1] - x[1]);
+      return sim;
+    })();
+
+    function itemKnnRecommend(user, k) {
+      const history = byUser[user];
+      if (!history) return [];
+      const scores = {};
+      for (const [item, rating] of Object.entries(history)) {
+        for (const [nb, s] of itemKNN[item] || []) {
+          scores[nb] = (scores[nb] || 0) + s * rating;
+        }
+      }
+      const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1] || Number(a[0]) - Number(b[0]));
+      return unseen(user, ranked, k);
+    }
+
+    function popularityRecommend(user, k) {
+      return unseen(user, popularity.map(([id, c]) => [id, c]), k);
+    }
+
+    function randomRecommend(user, k) {
+      const rng = mulberry32(7 + Number(user));
+      const items = [...ITEM_IDS].sort(() => rng() - 0.5);
+      return unseen(user, items.map((id) => [id, 0]), k);
+    }
+
+    // Matrix factorisation (SGD, rating loss)
+    function fitMF(epochs = 30, factors = 8, lr = 0.01, reg = 0.08) {
+      const rng = mulberry32(11);
+      const rows = [];
+      for (const u of USER_IDS) for (const [i, r] of Object.entries(RATINGS[u])) rows.push([u, i, r]);
+      const gmean = rows.reduce((s, r) => s + r[2], 0) / rows.length;
+      const ub = Object.fromEntries(USER_IDS.map((u) => [u, 0]));
+      const ib = Object.fromEntries(ITEM_IDS.map((i) => [i, 0]));
+      const uf = {}, inf = {};
+      for (const u of USER_IDS) uf[u] = Array.from({ length: factors }, () => gauss(rng) * 0.1);
+      for (const i of ITEM_IDS) inf[i] = Array.from({ length: factors }, () => gauss(rng) * 0.1);
+      const losses = [];
+      for (let e = 0; e < epochs; e++) {
+        // shuffle
+        for (let i = rows.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [rows[i], rows[j]] = [rows[j], rows[i]]; }
+        let sq = 0;
+        for (const [u, i, rating] of rows) {
+          const pu = uf[u], qi = inf[i];
+          let pred = gmean + ub[u] + ib[i];
+          for (let f = 0; f < factors; f++) pred += pu[f] * qi[f];
+          const err = rating - pred;
+          sq += err * err;
+          ub[u] += lr * (err - reg * ub[u]);
+          ib[i] += lr * (err - reg * ib[i]);
+          for (let f = 0; f < factors; f++) {
+            const pf = pu[f], qf = qi[f];
+            pu[f] += lr * (err * qf - reg * pf);
+            qi[f] += lr * (err * pf - reg * qf);
+          }
+        }
+        losses.push(Math.sqrt(sq / rows.length));
+      }
+      return { gmean, ub, ib, uf, inf, factors };
+    }
+
+    function mfRecommend(mf, user, k) {
+      if (!mf.uf[user]) return [];
+      const ranked = ITEM_IDS.map((i) => {
+        let s = mf.gmean + mf.uf[user] ? mf.gmean + mf.ub[user] + mf.ib[i] : 0;
+        s = mf.gmean + mf.ub[user] + mf.ib[i];
+        const pu = mf.uf[user], qi = mf.inf[i];
+        for (let f = 0; f < mf.factors; f++) s += pu[f] * qi[f];
+        return [i, s];
+      }).sort((a, b) => b[1] - a[1] || Number(a[0]) - Number(b[0]));
+      return unseen(user, ranked, k);
+    }
+
+    // BPR
+    function fitBPR(epochs = 40, factors = 8, lr = 0.05, reg = 0.01) {
+      const rng = mulberry32(13);
+      const positives = {};
+      for (const u of USER_IDS) positives[u] = new Set(Object.keys(RATINGS[u]));
+      const uf = {}, inf = {}, ib = Object.fromEntries(ITEM_IDS.map((i) => [i, 0]));
+      for (const u of USER_IDS) uf[u] = Array.from({ length: factors }, () => gauss(rng) * 0.1);
+      for (const i of ITEM_IDS) inf[i] = Array.from({ length: factors }, () => gauss(rng) * 0.1);
+      const pairs = [];
+      for (const u of USER_IDS) for (const i of Object.keys(RATINGS[u])) pairs.push([u, i]);
+      const losses = [];
+      for (let e = 0; e < epochs; e++) {
+        for (let i = pairs.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [pairs[i], pairs[j]] = [pairs[j], pairs[i]]; }
+        let total = 0;
+        for (const [u, pos] of pairs) {
+          const seen = positives[u];
+          if (seen.size >= ITEM_IDS.length) continue;
+          let neg = ITEM_IDS[Math.floor(rng() * ITEM_IDS.length)];
+          while (seen.has(neg)) neg = ITEM_IDS[Math.floor(rng() * ITEM_IDS.length)];
+          const pu = uf[u], qi = inf[pos], qj = inf[neg];
+          let diff = ib[pos] - ib[neg];
+          for (let f = 0; f < factors; f++) diff += pu[f] * (qi[f] - qj[f]);
+          const weight = diff > -30 ? 1 / (1 + Math.exp(diff)) : 1;
+          total += Math.log1p(Math.exp(-Math.abs(diff))) + Math.max(-diff, 0);
+          ib[pos] += lr * (weight - reg * ib[pos]);
+          ib[neg] += lr * (-weight - reg * ib[neg]);
+          for (let f = 0; f < factors; f++) {
+            const pf = pu[f], qf = qi[f], jf = qj[f];
+            pu[f] += lr * (weight * (qf - jf) - reg * pf);
+            qi[f] += lr * (weight * pf - reg * qf);
+            qj[f] += lr * (-weight * pf - reg * jf);
+          }
+        }
+        losses.push(total / Math.max(pairs.length, 1));
+      }
+      return { uf, inf, ib, factors, losses };
+    }
+
+    function bprRecommend(m, user, k) {
+      if (!m.uf[user]) return [];
+      const ranked = ITEM_IDS.map((i) => {
+        const pu = m.uf[user], qi = m.inf[i];
+        let s = m.ib[i];
+        for (let f = 0; f < m.factors; f++) s += pu[f] * qi[f];
+        return [i, s];
+      }).sort((a, b) => b[1] - a[1] || Number(a[0]) - Number(b[0]));
+      return unseen(user, ranked, k);
+    }
+
+    // precompute models
+    let mfModel = null, bprModel = null;
+    function ensureModels() {
+      if (!mfModel) mfModel = fitMF();
+      if (!bprModel) bprModel = fitBPR();
+    }
+
+    // === UI ===
+    const userSel = document.getElementById("user");
+    userSel.innerHTML = USER_IDS.map((u) => `<option value="${u}">user ${u}</option>`).join("");
+    userSel.value = "105";
+
+    function fmtScore(s, model) {
+      if (model === "popularity") return String(s);
+      if (model === "random") return "—";
+      return s.toFixed(3);
+    }
+
+    function render() {
+      ensureModels();
+      const user = userSel.value;
+      const modelKey = document.getElementById("model").value;
+      const k = Number(document.getElementById("k").value);
+      document.getElementById("kVal").textContent = k;
+
+      let recs = [];
+      if (modelKey === "item-knn") recs = itemKnnRecommend(user, k);
+      else if (modelKey === "bpr") recs = bprRecommend(bprModel, user, k);
+      else if (modelKey === "mf") recs = mfRecommend(mfModel, user, k);
+      else if (modelKey === "popularity") recs = popularityRecommend(user, k);
+      else recs = randomRecommend(user, k);
+
+      const names = { "item-knn": "item-knn", bpr: "bpr", mf: "matrix factorisation", popularity: "popularity", random: "random" };
+      document.getElementById("modelPill").textContent = names[modelKey];
+
+      // history
+      const hist = Object.entries(RATINGS[user]).sort((a, b) => b[1] - a[1]);
+      document.getElementById("historyList").innerHTML = hist.map(([id, r]) => `
+        <li class="seen">
+          <span class="rank mono">${r.toFixed(1)}</span>
+          <span class="title"><span class="t">${ITEMS[id].t}</span><span class="g">${ITEMS[id].g}</span></span>
+        </li>`).join("");
+
+      // recs
+      const scores = recs.map((r) => r[1]);
+      const maxS = Math.max(...scores, 1e-9), minS = Math.min(...scores, 0);
+      document.getElementById("recList").innerHTML = recs.length
+        ? recs.map(([id, s], i) => {
+            const pct = maxS === minS ? 70 : 30 + 70 * ((s - minS) / (maxS - minS));
+            return `<li>
+              <span class="rank">${i + 1}</span>
+              <span class="title">
+                <span class="t">${ITEMS[id].t}</span>
+                <span class="g">${ITEMS[id].g} · ${s === 0 && modelKey === "random" ? "shuffled" : fmtScore(s, modelKey)}</span>
+                <span class="bar"><i style="width:${modelKey === "random" ? 0 : pct}%"></i></span>
+              </span>
+              <span class="score">${modelKey === "random" ? "" : fmtScore(s, modelKey)}</span>
+            </li>`;
+          }).join("")
+        : `<li class="muted">No unseen items left for this user.</li>`;
+
+      // stats
+      const genres = recs.map(([id]) => ITEMS[id].g);
+      const uniqueGenres = new Set(genres).size;
+      const seenSet = new Set(Object.keys(RATINGS[user]));
+      const overlap = recs.filter(([id]) => seenSet.has(id)).length;
+      document.getElementById("stats").innerHTML = `
+        <div class="stat"><div class="k">returned</div><div class="v">${recs.length}</div></div>
+        <div class="stat"><div class="k">seen overlap</div><div class="v">${overlap}</div></div>
+        <div class="stat"><div class="k">genre variety</div><div class="v">${uniqueGenres}</div></div>
+        <div class="stat"><div class="k">catalogue</div><div class="v">${ITEM_IDS.length}</div></div>
+      `;
+
+      // explain note
+      const note = document.getElementById("explainNote");
+      if (modelKey === "item-knn") {
+        const topHist = hist.slice(0, 3).map(([id]) => ITEMS[id].t).join(", ");
+        note.innerHTML = `<strong>item-knn</strong> scores each unseen item as Σ similarity(item, seen) × rating, with cosine similarity shrunk by <code class="mono">count/(count+20)</code>. Strongest anchors in this history: ${topHist}.`;
+      } else if (modelKey === "bpr") {
+        note.innerHTML = `<strong>BPR</strong> threw the ratings away and optimised pairwise order only — for each seen item, push it above a sampled unseen one. That is why it ranks well while MF (rating MSE) often does not.`;
+      } else if (modelKey === "mf") {
+        note.innerHTML = `<strong>Matrix factorisation</strong> predicts ratings with biases + latent factors (train RMSE falls over epochs). Good at rating prediction; ranked by predicted score it tends to surface items a few generous users rated 5 — which is the package's pinned finding.`;
+      } else if (modelKey === "popularity") {
+        note.innerHTML = `<strong>Popularity</strong> is the same list for everybody (minus what you have already seen). It is a genuinely strong baseline — most published comparisons quietly omit it.`;
+      } else {
+        note.innerHTML = `<strong>Random</strong> is a shuffled catalogue — the floor. Anything at or below this is noise.`;
+      }
+    }
+
+    // matrix table
+    (function buildMatrix() {
+      const thead = document.querySelector("#matrixTable thead");
+      const tbody = document.querySelector("#matrixTable tbody");
+      thead.innerHTML = `<tr><th>user</th>${ITEM_IDS.map((i) => `<th class="num" title="${ITEMS[i].t}">${i}</th>`).join("")}</tr>`;
+      tbody.innerHTML = USER_IDS.map((u) => {
+        const cells = ITEM_IDS.map((i) => {
+          const r = RATINGS[u][i];
+          return `<td class="num">${r !== undefined ? r.toFixed(1) : ""}</td>`;
+        }).join("");
+        return `<tr><td class="mono">${u}</td>${cells}</tr>`;
+      }).join("");
+    })();
+
+    userSel.addEventListener("change", render);
+    document.getElementById("model").addEventListener("change", render);
+    document.getElementById("k").addEventListener("input", render);
+    document.getElementById("runBtn").addEventListener("click", render);
+    render();
+  </script>
+</body>
+</html>
