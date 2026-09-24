@@ -1,5 +1,9 @@
 # recs
 
+[![CI](https://github.com/umer-78/recommender-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/umer-78/recommender-engine/actions/workflows/ci.yml)
+
+**Live demo:** https://umer-78.github.io/recommender-engine/
+
 A recommender engine in Python with no dependencies: popularity and random
 baselines, item-item collaborative filtering, matrix factorisation, and BPR —
 scored on a temporal split, on ranking metrics, with the baselines left in.
