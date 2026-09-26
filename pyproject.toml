@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "recs"
+name = "recommender-engine"
 version = "1.0.0"
-description = "A recommender engine: popularity and random baselines, item-item CF, rating-based matrix factorisation and BPR, scored on a temporal split."
+description = "A recommender engine in Python: popularity and random baselines, item-item CF, matrix factorisation and BPR, scored on a temporal split with ranking metrics."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Umer Hashmi" }]
