@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/umer-78/recommender-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/umer-78/recommender-engine/actions/workflows/ci.yml)
 
+[![Recommender Engine: the live demo](.github/preview.jpg)](https://umer-78.github.io/recommender-engine/)
+
 **Live demo:** https://umer-78.github.io/recommender-engine/
 
 A recommender engine in Python with no dependencies: popularity and random
